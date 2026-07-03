@@ -1,0 +1,478 @@
+// Scoped State Controller
+(function() {
+    'use strict';
+
+    // Estado global de la sesión (Memoria Volátil)
+    let pages = [];
+    let stream = null;
+    let currentCameraIndex = 0;
+    let videoDevices = [];
+    
+    // Elementos del DOM
+    const loadingScreen = document.getElementById('loading-screen');
+    const loadingStatus = document.getElementById('loading-status');
+    const progressBar = document.getElementById('progress-bar');
+    const appContainer = document.getElementById('app-container');
+    
+    const videoFeed = document.getElementById('video-feed');
+    const captureBtn = document.getElementById('capture-btn');
+    const toggleFlashBtn = document.getElementById('toggle-flash-btn');
+    
+    const cameraSection = document.getElementById('camera-section');
+    const previewSection = document.getElementById('preview-section');
+    
+    const canvasRaw = document.getElementById('canvas-raw');
+    const canvasProcessed = document.getElementById('canvas-processed');
+    
+    const inputBlockSize = document.getElementById('input-block-size');
+    const inputCValue = document.getElementById('input-c-value');
+    const blockSizeVal = document.getElementById('block-size-val');
+    const cValueVal = document.getElementById('c-val');
+    
+    const acceptPageBtn = document.getElementById('accept-page-btn');
+    const discardPageBtn = document.getElementById('discard-page-btn');
+    
+    const galleryModal = document.getElementById('gallery-modal');
+    const galleryTriggerBtn = document.getElementById('gallery-trigger-btn');
+    const galleryTriggerImg = document.getElementById('gallery-trigger-img');
+    const galleryTriggerIcon = document.getElementById('gallery-trigger-icon');
+    const galleryTriggerBadge = document.getElementById('gallery-trigger-badge');
+    const closeGalleryBtn = document.getElementById('close-gallery-btn');
+    
+    const thumbnailsContainer = document.getElementById('thumbnails-container');
+    const pagesCountText = document.getElementById('pages-count-text');
+    const cancelSessionBtn = document.getElementById('cancel-session-btn');
+    const downloadPdfBtn = document.getElementById('download-pdf-btn');
+
+    // 1. Monitorear e Inicializar OpenCV.js
+    let progressInterval = setInterval(() => {
+        let currentWidth = parseFloat(progressBar.style.width) || 0;
+        if (currentWidth < 90) {
+            progressBar.style.width = (currentWidth + 10) + '%';
+        }
+    }, 300);
+
+    const checkOpenCv = setInterval(() => {
+        if (typeof cv !== 'undefined' && cv.Mat && cv.adaptiveThreshold) {
+            clearInterval(checkOpenCv);
+            clearInterval(progressInterval);
+            progressBar.style.width = '100%';
+            
+            loadingStatus.textContent = 'OpenCV listo. Iniciando cámara...';
+            setTimeout(() => {
+                initializeApplication();
+            }, 500);
+        }
+    }, 100);
+
+    // 2. Inicializar la Aplicación y Hardware
+    async function initializeApplication() {
+        try {
+            await detectCameras();
+            await startCamera();
+            
+            // Ocultar pantalla de carga y mostrar app
+            loadingScreen.classList.remove('active');
+            appContainer.classList.remove('app-hidden');
+            
+            // Registrar eventos de botones y controles
+            setupEventListeners();
+        } catch (error) {
+            console.error('Error al inicializar la app:', error);
+            loadingStatus.textContent = 'Error al acceder al hardware de video.';
+            alert('No se pudo acceder a la cámara. Por favor, concede permisos e intenta de nuevo.');
+        }
+    }
+
+    // Detectar todas las entradas de video
+    async function detectCameras() {
+        try {
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            videoDevices = devices.filter(device => device.kind === 'videoinput');
+            if (videoDevices.length <= 1) {
+                toggleFlashBtn.style.display = 'none'; // Ocultar botón si no hay múltiples cámaras
+            }
+        } catch (err) {
+            console.warn('Error al enumerar dispositivos de video:', err);
+        }
+    }
+
+    // Iniciar el flujo de la cámara
+    async function startCamera() {
+        if (stream) {
+            stream.getTracks().forEach(track => track.stop());
+        }
+
+        const constraints = {
+            audio: false,
+            video: {
+                facingMode: 'environment', // Preferir cámara trasera
+                width: { ideal: 1920, max: 3840 },
+                height: { ideal: 1080, max: 2160 }
+            }
+        };
+
+        // Si tenemos dispositivos detectados, usar el específico
+        if (videoDevices.length > 0) {
+            constraints.video.deviceId = { exact: videoDevices[currentCameraIndex].deviceId };
+            // Quitar facingMode si especificamos deviceId para evitar conflictos
+            delete constraints.video.facingMode;
+        }
+
+        try {
+            stream = await navigator.mediaDevices.getUserMedia(constraints);
+        } catch (err) {
+            console.warn('Fallo al cargar con resolución óptima, reintentando modo básico:', err);
+            // Intentar sin restricciones de resolución ni deviceId
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({
+                    audio: false,
+                    video: { facingMode: 'environment' }
+                });
+            } catch (fallbackErr) {
+                // Última opción: cualquier cámara disponible
+                stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: true });
+            }
+        }
+
+        videoFeed.srcObject = stream;
+    }
+
+    // Cambiar entre cámaras
+    async function switchCamera() {
+        if (videoDevices.length <= 1) return;
+        currentCameraIndex = (currentCameraIndex + 1) % videoDevices.length;
+        
+        // Efecto visual de transición de cámara
+        videoFeed.style.opacity = '0';
+        await startCamera();
+        setTimeout(() => {
+            videoFeed.style.opacity = '1';
+        }, 300);
+    }
+
+    // Configurar manejadores de eventos
+    function setupEventListeners() {
+        // Captura
+        captureBtn.addEventListener('click', captureFrame);
+        toggleFlashBtn.addEventListener('click', switchCamera);
+        
+        // Ajustes de Filtro en tiempo real
+        inputBlockSize.addEventListener('input', () => {
+            let val = parseInt(inputBlockSize.value);
+            if (val % 2 === 0) val += 1; // Debe ser impar
+            blockSizeVal.textContent = val;
+            applyAdaptiveThreshold();
+        });
+
+        inputCValue.addEventListener('input', () => {
+            cValueVal.textContent = inputCValue.value;
+            applyAdaptiveThreshold();
+        });
+
+        // Decisiones de Previsualización
+        acceptPageBtn.addEventListener('click', acceptCapturedPage);
+        discardPageBtn.addEventListener('click', discardCapturedPage);
+        
+        // Abrir/Cerrar Galería
+        galleryTriggerBtn.addEventListener('click', () => {
+            if (pages.length > 0) {
+                galleryModal.classList.add('active');
+            }
+        });
+
+        closeGalleryBtn.addEventListener('click', () => {
+            galleryModal.classList.remove('active');
+        });
+
+        // Panel de Control y PDF
+        cancelSessionBtn.addEventListener('click', () => {
+            if (confirm('¿Estás seguro de que deseas cancelar la sesión? Se eliminarán de forma segura todos los datos en memoria.')) {
+                destroyDataSecurely();
+                switchToScannerView();
+            }
+        });
+
+        downloadPdfBtn.addEventListener('click', generateAndDownloadPDF);
+    }
+
+    // 3. Flujo de Captura y Procesamiento
+    function captureFrame() {
+        if (!stream) return;
+
+        // Establecer dimensiones del canvas de captura basadas en el video real
+        const width = videoFeed.videoWidth;
+        const height = videoFeed.videoHeight;
+        
+        canvasRaw.width = width;
+        canvasRaw.height = height;
+
+        const ctx = canvasRaw.getContext('2d');
+        ctx.drawImage(videoFeed, 0, 0, width, height);
+
+        // Cambiar a vista de previsualización
+        cameraSection.classList.remove('active');
+        previewSection.classList.add('active');
+
+        // Procesar imagen con el filtro OpenCV
+        applyAdaptiveThreshold();
+    }
+
+    // Filtro Mágico: Umbralización Adaptativa Gaussiana usando OpenCV.js
+    function applyAdaptiveThreshold() {
+        if (!canvasRaw.width || !canvasRaw.height) return;
+
+        let src, dst;
+        try {
+            // Cargar imagen raw en una matriz de OpenCV
+            src = cv.imread(canvasRaw);
+            dst = new cv.Mat();
+
+            // Convertir a escala de grises
+            cv.cvtColor(src, src, cv.COLOR_RGBA2GRAY, 0);
+
+            // Obtener parámetros
+            let blockSize = parseInt(inputBlockSize.value);
+            if (blockSize % 2 === 0) blockSize += 1; // Obligatorio que sea impar
+            if (blockSize < 3) blockSize = 3;
+            
+            const cValue = parseInt(inputCValue.value);
+
+            // Aplicar Umbral Adaptativo Gaussiano
+            cv.adaptiveThreshold(
+                src,
+                dst,
+                255, // Valor máximo (Blanco puro)
+                cv.ADAPTIVE_THRESH_GAUSSIAN_C,
+                cv.THRESH_BINARY,
+                blockSize,
+                cValue
+            );
+
+            // Renderizar la matriz procesada en el canvas de previsualización
+            cv.imshow(canvasProcessed, dst);
+
+        } catch (error) {
+            console.error('Error al aplicar procesamiento OpenCV:', error);
+        } finally {
+            // Liberación estricta de memoria WASM
+            if (src) src.delete();
+            if (dst) dst.delete();
+        }
+    }
+
+    // Aceptar Página Escaneada
+    function acceptCapturedPage() {
+        // Extraer contenido del canvas procesado como un Blob
+        canvasProcessed.toBlob((blob) => {
+            if (blob) {
+                const objectUrl = URL.createObjectURL(blob);
+                
+                // Agregar al arreglo en memoria volátil
+                pages.push({
+                    blob: blob,
+                    objectUrl: objectUrl
+                });
+
+                updateGalleryUI();
+                switchToScannerView();
+            }
+        }, 'image/jpeg', 0.85); // Calidad optimizada de impresión
+    }
+
+    // Descartar captura actual
+    function discardCapturedPage() {
+        // Limpiar canvas temporal
+        const ctx = canvasProcessed.getContext('2d');
+        if (ctx) ctx.clearRect(0, 0, canvasProcessed.width, canvasProcessed.height);
+        canvasProcessed.width = 0;
+        canvasProcessed.height = 0;
+        
+        switchToScannerView();
+    }
+
+    // Cambiar vistas
+    function switchToScannerView() {
+        previewSection.classList.remove('active');
+        cameraSection.classList.add('active');
+    }
+
+    // 4. Gestión de la Galería
+    function updateGalleryUI() {
+        thumbnailsContainer.innerHTML = '';
+        
+        pages.forEach((page, index) => {
+            const card = document.createElement('div');
+            card.className = 'thumbnail-card';
+            
+            const img = document.createElement('img');
+            img.src = page.objectUrl;
+            img.alt = `Página ${index + 1}`;
+            
+            const badge = document.createElement('div');
+            badge.className = 'page-badge';
+            badge.textContent = index + 1;
+            
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = 'delete-thumb-btn';
+            deleteBtn.innerHTML = '&times;';
+            deleteBtn.title = 'Eliminar Página';
+            deleteBtn.addEventListener('click', (e) => {
+                e.stopPropagation(); // Evitar otros triggers
+                removePage(index);
+            });
+            
+            card.appendChild(img);
+            card.appendChild(badge);
+            card.appendChild(deleteBtn);
+            thumbnailsContainer.appendChild(card);
+        });
+
+        // Actualizar contador y botones
+        const count = pages.length;
+        pagesCountText.textContent = count;
+        
+        // Actualizar botón de disparo de la galería (cámara)
+        if (count > 0) {
+            galleryTriggerBtn.disabled = false;
+            galleryTriggerBadge.style.display = 'flex';
+            galleryTriggerBadge.textContent = count;
+            
+            // Mostrar última página como miniatura en el botón de disparo
+            galleryTriggerImg.src = pages[count - 1].objectUrl;
+            galleryTriggerImg.style.display = 'block';
+            galleryTriggerIcon.style.display = 'none';
+            
+            downloadPdfBtn.disabled = false;
+        } else {
+            galleryTriggerBtn.disabled = true;
+            galleryTriggerBadge.style.display = 'none';
+            galleryTriggerImg.style.display = 'none';
+            galleryTriggerIcon.style.display = 'block';
+            galleryTriggerImg.src = '';
+            
+            downloadPdfBtn.disabled = true;
+            if (galleryModal) {
+                galleryModal.classList.remove('active');
+            }
+        }
+    }
+
+    // Eliminar una página del arreglo
+    function removePage(index) {
+        if (index >= 0 && index < pages.length) {
+            // Revocar URL del elemento removido
+            URL.revokeObjectURL(pages[index].objectUrl);
+            
+            // Mutación del arreglo original (.splice())
+            pages.splice(index, 1);
+            
+            // Actualizar vista
+            updateGalleryUI();
+        }
+    }
+
+    // Helper para convertir Blob a Base64 de forma asíncrona
+    function readBlobAsDataURL(blob) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = () => reject(reader.error);
+            reader.readAsDataURL(blob);
+        });
+    }
+
+    // 5. Compilación del Documento PDF y Descarga
+    async function generateAndDownloadPDF() {
+        if (pages.length === 0) return;
+
+        downloadPdfBtn.disabled = true;
+        downloadPdfBtn.textContent = 'Compilando PDF...';
+
+        try {
+            const { jsPDF } = window.jspdf;
+            // PDF en A4 (210mm x 297mm) en modo vertical (portrait)
+            const doc = new jsPDF({
+                orientation: 'portrait',
+                unit: 'mm',
+                format: 'a4'
+            });
+
+            for (let i = 0; i < pages.length; i++) {
+                if (i > 0) {
+                    doc.addPage();
+                }
+                
+                // Convertir Blob a Base64 justo en el momento de la compilación
+                const base64Data = await readBlobAsDataURL(pages[i].blob);
+                
+                // Añadir imagen al PDF (Ajustado al tamaño completo de la página A4)
+                doc.addImage(base64Data, 'JPEG', 0, 0, 210, 297);
+            }
+
+            // Descargar el archivo PDF
+            doc.save('PersonalScan_' + new Date().toISOString().slice(0,10) + '.pdf');
+            
+            // Feedback de éxito y purga
+            alert('¡PDF exportado con éxito! Se eliminarán inmediatamente todos los datos locales para tu privacidad.');
+            
+            // Destrucción obligatoria de datos en RAM
+            destroyDataSecurely();
+            
+            // Retornar a la vista de cámara
+            switchToScannerView();
+
+        } catch (error) {
+            console.error('Error al generar PDF:', error);
+            alert('Ocurrió un error al compilar el PDF. Inténtalo de nuevo.');
+            downloadPdfBtn.disabled = false;
+        } finally {
+            downloadPdfBtn.textContent = 'Exportar PDF (Descarga Privada)';
+        }
+    }
+
+    // 6. Protocolo de Destrucción de Datos Privacy-First (MÉTODO DE DESTRUCCIÓN DE DATOS CRÍTICO)
+    function destroyDataSecurely() {
+        console.log('Iniciando protocolo de destrucción de datos...');
+        
+        // A. Romper referencias y revocar URLs de objeto en el navegador
+        if (pages && pages.length > 0) {
+            pages.forEach(page => {
+                if (page.objectUrl) {
+                    URL.revokeObjectURL(page.objectUrl);
+                }
+                // Anular propiedades para facilitar recolección de basura
+                page.blob = null;
+                page.objectUrl = null;
+            });
+            // Reasignar arreglo a vacío y romper referencia
+            pages.length = 0;
+        }
+        pages = [];
+
+        // B. Limpieza de Canvas del DOM e invalidación de texturas de GPU
+        const canvases = [canvasRaw, canvasProcessed];
+        canvases.forEach(canvas => {
+            if (canvas) {
+                const ctx = canvas.getContext('2d');
+                if (ctx) {
+                    // Borrar el búfer gráfico bidimensional
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                }
+                // Forzar al motor gráfico del navegador a destruir la memoria del framebuffer
+                canvas.width = 0;
+                canvas.height = 0;
+            }
+        });
+
+        // C. Limpiar la galería y cerrar modal
+        if (galleryModal) {
+            galleryModal.classList.remove('active');
+        }
+        
+        updateGalleryUI();
+        
+        console.log('Destrucción de datos completada. Memoria RAM purgada exitosamente.');
+    }
+
+})();

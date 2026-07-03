@@ -93,13 +93,20 @@
                     <div class="capture-btn-inner"></div>
                 </button>
                 
-                <!-- Botón de Alternar Cámara (Derecha) -->
+                <!-- Botón de Voltear Cámara (Derecha) -->
                 <div class="side-control-placeholder">
-                    <button id="toggle-flash-btn" class="icon-btn" title="Alternar Cámara">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
-                        </svg>
-                    </button>
+                    <div class="flip-btn-wrapper">
+                        <button id="toggle-flash-btn" class="icon-btn flip-camera-btn" title="Cambiar a Cámara Frontal">
+                            <!-- Ícono de voltear cámara (flip) -->
+                            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M20 7h-9"/>
+                                <path d="M14 17H5"/>
+                                <circle cx="17" cy="17" r="3"/>
+                                <circle cx="7" cy="7" r="3"/>
+                            </svg>
+                        </button>
+                        <span id="camera-mode-label" class="camera-mode-label">Trasera</span>
+                    </div>
                 </div>
             </div>
         </section>

@@ -315,11 +315,33 @@ html, body {
 }
 
 .side-control-placeholder {
-    width: 50px;
-    height: 50px;
+    width: 56px;
     display: flex;
+    flex-direction: column;
     justify-content: center;
     align-items: center;
+    gap: 0.25rem;
+}
+
+.flip-btn-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+.flip-camera-btn {
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.camera-mode-label {
+    font-size: 0.6rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    transition: color 0.2s ease;
+    line-height: 1;
 }
 
 .icon-btn {

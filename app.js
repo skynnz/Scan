@@ -5,8 +5,9 @@
     // Estado global de la sesión (Memoria Volátil)
     let pages = [];
     let stream = null;
-    let currentCameraIndex = 0;
-    let videoDevices = [];
+    // 'environment' = cámara trasera (por defecto), 'user' = cámara frontal
+    let currentFacingMode = 'environment';
+    let hasMultipleCameras = false;
     
     // Elementos del DOM
     const loadingScreen = document.getElementById('loading-screen');
@@ -84,71 +85,101 @@
         }
     }
 
-    // Detectar todas las entradas de video
+    // Detectar si el dispositivo tiene múltiples cámaras para mostrar/ocultar el botón de voltear
     async function detectCameras() {
         try {
+            // Necesitamos pedir permiso primero para que enumerateDevices devuelva las etiquetas
+            // Hacemos una solicitud temporal solo para activar la enumeración
+            const tempStream = await navigator.mediaDevices.getUserMedia({ video: true });
+            tempStream.getTracks().forEach(t => t.stop());
+
             const devices = await navigator.mediaDevices.enumerateDevices();
-            videoDevices = devices.filter(device => device.kind === 'videoinput');
-            if (videoDevices.length <= 1) {
-                toggleFlashBtn.style.display = 'none'; // Ocultar botón si no hay múltiples cámaras
+            const videoInputs = devices.filter(d => d.kind === 'videoinput');
+            hasMultipleCameras = videoInputs.length > 1;
+
+            if (!hasMultipleCameras) {
+                // Ocultar el botón de voltear si solo hay una cámara
+                toggleFlashBtn.style.visibility = 'hidden';
+                toggleFlashBtn.style.pointerEvents = 'none';
             }
         } catch (err) {
-            console.warn('Error al enumerar dispositivos de video:', err);
+            console.warn('No se pudo enumerar cámaras:', err);
+            // En caso de error de enumeración, ocultar el botón por seguridad
+            toggleFlashBtn.style.visibility = 'hidden';
         }
     }
 
-    // Iniciar el flujo de la cámara
+    // Iniciar el flujo de la cámara usando facingMode como fuente de verdad.
+    // Este enfoque es el ÚNICO correcto en iOS Safari y Android Chrome,
+    // ya que el orden del array de videoDevices no garantiza cuál es delantera/trasera.
     async function startCamera() {
+        // Detener tracks anteriores si existen
         if (stream) {
             stream.getTracks().forEach(track => track.stop());
+            stream = null;
         }
 
-        const constraints = {
-            audio: false,
-            video: {
-                facingMode: 'environment', // Preferir cámara trasera
-                width: { ideal: 1920, max: 3840 },
-                height: { ideal: 1080, max: 2160 }
-            }
-        };
-
-        // Si tenemos dispositivos detectados, usar el específico
-        if (videoDevices.length > 0) {
-            constraints.video.deviceId = { exact: videoDevices[currentCameraIndex].deviceId };
-            // Quitar facingMode si especificamos deviceId para evitar conflictos
-            delete constraints.video.facingMode;
-        }
-
+        // Primero intentamos con alta resolución + facingMode correcto
         try {
-            stream = await navigator.mediaDevices.getUserMedia(constraints);
+            stream = await navigator.mediaDevices.getUserMedia({
+                audio: false,
+                video: {
+                    facingMode: { ideal: currentFacingMode },
+                    width:  { ideal: 1920, max: 3840 },
+                    height: { ideal: 1080, max: 2160 }
+                }
+            });
         } catch (err) {
-            console.warn('Fallo al cargar con resolución óptima, reintentando modo básico:', err);
-            // Intentar sin restricciones de resolución ni deviceId
+            console.warn('Fallo resolución alta, reintentando con resolución básica:', err);
+            // Fallback 1: solo facingMode, sin restricciones de resolución
             try {
                 stream = await navigator.mediaDevices.getUserMedia({
                     audio: false,
-                    video: { facingMode: 'environment' }
+                    video: { facingMode: { ideal: currentFacingMode } }
                 });
             } catch (fallbackErr) {
-                // Última opción: cualquier cámara disponible
+                console.warn('Fallo facingMode, reintentando con cualquier cámara:', fallbackErr);
+                // Fallback 2: última opción, cualquier cámara disponible
                 stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: true });
             }
         }
 
         videoFeed.srcObject = stream;
+        updateFlipButtonIcon();
     }
 
-    // Cambiar entre cámaras
+    // Alternar entre cámara trasera (environment) y frontal (user)
     async function switchCamera() {
-        if (videoDevices.length <= 1) return;
-        currentCameraIndex = (currentCameraIndex + 1) % videoDevices.length;
-        
-        // Efecto visual de transición de cámara
+        currentFacingMode = (currentFacingMode === 'environment') ? 'user' : 'environment';
+
+        // Efecto visual de transición
         videoFeed.style.opacity = '0';
+        videoFeed.style.transform = 'scale(0.95)';
+        videoFeed.style.transition = 'opacity 0.2s ease, transform 0.2s ease';
+
         await startCamera();
+
         setTimeout(() => {
             videoFeed.style.opacity = '1';
-        }, 300);
+            videoFeed.style.transform = 'scale(1)';
+        }, 200);
+    }
+
+    // Actualizar el ícono del botón de volteo y etiqueta según la cámara activa
+    function updateFlipButtonIcon() {
+        const isRear = currentFacingMode === 'environment';
+        const modeLabel = document.getElementById('camera-mode-label');
+
+        toggleFlashBtn.title = isRear ? 'Cambiar a Cámara Frontal' : 'Cambiar a Cámara Trasera';
+
+        // Resaltar el botón en verde cuando se usa cámara frontal (para indicar que no es el modo predeterminado)
+        toggleFlashBtn.style.borderColor = isRear ? '' : 'var(--accent-color)';
+        toggleFlashBtn.style.boxShadow  = isRear ? '' : '0 0 10px var(--accent-glow)';
+
+        if (modeLabel) {
+            modeLabel.textContent = isRear ? 'Trasera' : 'Frontal';
+            modeLabel.style.color = isRear ? '' : 'var(--accent-color)';
+        }
     }
 
     // Configurar manejadores de eventos

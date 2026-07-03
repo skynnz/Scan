@@ -227,19 +227,76 @@
         downloadPdfBtn.addEventListener('click', generateAndDownloadPDF);
     }
 
+
+    // Calcular la región del video real que corresponde al scanner guide visual.
+    // Necesario porque el <video> usa object-fit:cover, lo cual escala y centra el
+    // stream de video para llenar el contenedor, creando un offset invisible.
+    function computeCropRegion() {
+        const vW = videoFeed.videoWidth;
+        const vH = videoFeed.videoHeight;
+
+        // Dimensiones CSS del elemento <video> tal como lo renderiza el navegador
+        const elRect = videoFeed.getBoundingClientRect();
+        const eW = elRect.width;
+        const eH = elRect.height;
+
+        if (!vW || !vH || !eW || !eH) return null;
+
+        // --- Matemática de object-fit: cover ---
+        // La imagen se escala de modo que ambas dimensiones "cubran" el contenedor.
+        // Escala = max(contenedor/video) para cada eje.
+        const scale = Math.max(eW / vW, eH / vH);
+
+        // Cuánto se desborda el video escalado más allá del elemento (centrado)
+        const offsetX = (vW * scale - eW) / 2;  // px de video fuera a la izquierda
+        const offsetY = (vH * scale - eH) / 2;  // px de video fuera arriba
+
+        // Posición y tamaño CSS del scanner-guide (rectángulo visible A4)
+        const guideEl = document.querySelector('.scanner-guide');
+        if (!guideEl) return null;
+        const guideRect = guideEl.getBoundingClientRect();
+
+        // Posición del guide relativa al elemento <video> (en px CSS)
+        const guideLeftCss  = guideRect.left   - elRect.left;
+        const guideTopCss   = guideRect.top    - elRect.top;
+        const guideWidthCss = guideRect.width;
+        const guideHeightCss= guideRect.height;
+
+        // Convertir coordenadas CSS → píxeles reales del stream de video
+        const cropX = Math.round((guideLeftCss  + offsetX) / scale);
+        const cropY = Math.round((guideTopCss   + offsetY) / scale);
+        const cropW = Math.round(guideWidthCss  / scale);
+        const cropH = Math.round(guideHeightCss / scale);
+
+        // Clamping: garantizar que no nos salgamos del frame real
+        return {
+            x: Math.max(0, cropX),
+            y: Math.max(0, cropY),
+            w: Math.min(cropW, vW - Math.max(0, cropX)),
+            h: Math.min(cropH, vH - Math.max(0, cropY))
+        };
+    }
+
     // 3. Flujo de Captura y Procesamiento
     function captureFrame() {
         if (!stream) return;
 
-        // Establecer dimensiones del canvas de captura basadas en el video real
-        const width = videoFeed.videoWidth;
-        const height = videoFeed.videoHeight;
-        
-        canvasRaw.width = width;
-        canvasRaw.height = height;
+        // Calcular la región de recorte correspondiente al scanner guide
+        const crop = computeCropRegion();
+
+        // Si por alguna razón no se puede calcular el recorte, usar frame completo
+        const srcX = crop ? crop.x : 0;
+        const srcY = crop ? crop.y : 0;
+        const srcW = crop ? crop.w : videoFeed.videoWidth;
+        const srcH = crop ? crop.h : videoFeed.videoHeight;
+
+        // El canvas raw tiene exactamente las dimensiones del área de interés
+        canvasRaw.width  = srcW;
+        canvasRaw.height = srcH;
 
         const ctx = canvasRaw.getContext('2d');
-        ctx.drawImage(videoFeed, 0, 0, width, height);
+        // Dibujar SOLO el área dentro del scanner guide (sin el fondo/entorno)
+        ctx.drawImage(videoFeed, srcX, srcY, srcW, srcH, 0, 0, srcW, srcH);
 
         // Cambiar a vista de previsualización
         cameraSection.classList.remove('active');

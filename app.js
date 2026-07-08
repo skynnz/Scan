@@ -5,6 +5,7 @@
     // Estado global de la sesión (Memoria Volátil)
     let pages = [];
     let stream = null;
+    let lastCropRegion = null;
     // 'environment' = cámara trasera (por defecto), 'user' = cámara frontal
     let currentFacingMode = 'environment';
     let hasMultipleCameras = false;
@@ -278,25 +279,30 @@
     }
 
     // 3. Flujo de Captura y Procesamiento
-    function captureFrame() {
-        if (!stream) return;
-
-        // Calcular la región de recorte correspondiente al scanner guide
+    function drawCropToCanvas(targetCanvas) {
         const crop = computeCropRegion();
-
-        // Si por alguna razón no se puede calcular el recorte, usar frame completo
         const srcX = crop ? crop.x : 0;
         const srcY = crop ? crop.y : 0;
         const srcW = crop ? crop.w : videoFeed.videoWidth;
         const srcH = crop ? crop.h : videoFeed.videoHeight;
 
-        // El canvas raw tiene exactamente las dimensiones del área de interés
-        canvasRaw.width  = srcW;
-        canvasRaw.height = srcH;
+        targetCanvas.width = srcW;
+        targetCanvas.height = srcH;
 
-        const ctx = canvasRaw.getContext('2d');
-        // Dibujar SOLO el área dentro del scanner guide (sin el fondo/entorno)
+        const ctx = targetCanvas.getContext('2d');
+        if (!ctx) return null;
+
+        ctx.clearRect(0, 0, targetCanvas.width, targetCanvas.height);
         ctx.drawImage(videoFeed, srcX, srcY, srcW, srcH, 0, 0, srcW, srcH);
+
+        lastCropRegion = crop;
+        return { crop, srcX, srcY, srcW, srcH };
+    }
+
+    function captureFrame() {
+        if (!stream) return;
+
+        drawCropToCanvas(canvasRaw);
 
         // Cambiar a vista de previsualización
         cameraSection.classList.remove('active');
@@ -337,6 +343,9 @@
                 cValue
             );
 
+            canvasProcessed.width = dst.cols;
+            canvasProcessed.height = dst.rows;
+
             // Renderizar la matriz procesada en el canvas de previsualización
             cv.imshow(canvasProcessed, dst);
 
@@ -370,12 +379,17 @@
 
     // Descartar captura actual
     function discardCapturedPage() {
-        // Limpiar canvas temporal
-        const ctx = canvasProcessed.getContext('2d');
-        if (ctx) ctx.clearRect(0, 0, canvasProcessed.width, canvasProcessed.height);
+        const rawCtx = canvasRaw.getContext('2d');
+        if (rawCtx) rawCtx.clearRect(0, 0, canvasRaw.width, canvasRaw.height);
+        canvasRaw.width = 0;
+        canvasRaw.height = 0;
+
+        const processedCtx = canvasProcessed.getContext('2d');
+        if (processedCtx) processedCtx.clearRect(0, 0, canvasProcessed.width, canvasProcessed.height);
         canvasProcessed.width = 0;
         canvasProcessed.height = 0;
-        
+
+        lastCropRegion = null;
         switchToScannerView();
     }
 

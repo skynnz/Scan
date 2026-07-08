@@ -449,11 +449,15 @@ html, body {
 }
 
 #canvas-processed {
+    display: block;
+    width: 100%;
+    height: 100%;
     max-width: 100%;
     max-height: 100%;
     object-fit: contain;
     border-radius: 4px;
     box-shadow: var(--shadow-premium);
+    background-color: #ffffff;
 }
 
 /* Panel de Controles del Filtro */

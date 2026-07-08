@@ -316,14 +316,19 @@
     function applyAdaptiveThreshold() {
         if (!canvasRaw.width || !canvasRaw.height) return;
 
-        let src, dst;
+        let src, gray, dst, contourMask, contours, hierarchy;
+        let displayMat = null;
         try {
             // Cargar imagen raw en una matriz de OpenCV
             src = cv.imread(canvasRaw);
+            gray = new cv.Mat();
             dst = new cv.Mat();
+            contourMask = new cv.Mat();
+            contours = new cv.MatVector();
+            hierarchy = new cv.Mat();
 
             // Convertir a escala de grises
-            cv.cvtColor(src, src, cv.COLOR_RGBA2GRAY, 0);
+            cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY, 0);
 
             // Obtener parámetros
             let blockSize = parseInt(inputBlockSize.value);
@@ -334,7 +339,7 @@
 
             // Aplicar Umbral Adaptativo Gaussiano
             cv.adaptiveThreshold(
-                src,
+                gray,
                 dst,
                 255, // Valor máximo (Blanco puro)
                 cv.ADAPTIVE_THRESH_GAUSSIAN_C,
@@ -343,18 +348,92 @@
                 cValue
             );
 
-            canvasProcessed.width = dst.cols;
-            canvasProcessed.height = dst.rows;
+            // Invertir el mapa para que las figuras oscuras se vuelvan manchas blancas y puedan detectarse como contornos
+            cv.bitwise_not(dst, contourMask);
+
+            // 1. Encontrar contornos principales
+            cv.findContours(contourMask, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+
+            let bestPoints = null;
+            let maxArea = 0;
+
+            for (let i = 0; i < contours.size(); i++) {
+                const contour = contours.get(i);
+                const area = cv.contourArea(contour, false);
+
+                if (area < 1000) {
+                    contour.delete();
+                    continue;
+                }
+
+                const peri = cv.arcLength(contour, true);
+                const approx = new cv.Mat();
+                cv.approxPolyDP(contour, approx, 0.02 * peri, true);
+
+                if (approx.rows === 4) {
+                    const rect = cv.boundingRect(approx);
+                    const rectArea = rect.width * rect.height;
+
+                    if (rectArea > maxArea) {
+                        maxArea = rectArea;
+
+                        const points = [];
+                        for (let j = 0; j < approx.rows; j++) {
+                            points.push({
+                                x: approx.data32S[j * 2],
+                                y: approx.data32S[j * 2 + 1]
+                            });
+                        }
+
+                        bestPoints = points;
+                    }
+                }
+
+                approx.delete();
+                contour.delete();
+            }
+
+            // 2. Si se estabiliza en un polígono de 4 esquinas, corregir perspectiva
+            if (bestPoints && bestPoints.length === 4) {
+                const sortedByY = bestPoints.slice().sort((a, b) => a.y - b.y || a.x - b.x);
+                const top = sortedByY.slice(0, 2).sort((a, b) => a.x - b.x);
+                const bottom = sortedByY.slice(2, 4).sort((a, b) => b.x - a.x);
+                const orderedPoints = [top[0], top[1], bottom[0], bottom[1]];
+
+                const width = Math.max(src.cols, 600);
+                const height = Math.max(src.rows, 800);
+
+                const srcTri = cv.matFromArray(4, 1, cv.CV_32FC2, orderedPoints.flatMap(p => [p.x, p.y]));
+                const dstTri = cv.matFromArray(4, 1, cv.CV_32FC2, [0, 0, width, 0, width, height, 0, height]);
+                const perspectiveMatrix = cv.getPerspectiveTransform(srcTri, dstTri);
+
+                displayMat = new cv.Mat();
+                cv.warpPerspective(src, displayMat, perspectiveMatrix, new cv.Size(width, height));
+
+                srcTri.delete();
+                dstTri.delete();
+                perspectiveMatrix.delete();
+            } else {
+                displayMat = src.clone();
+            }
+
+            canvasProcessed.width = displayMat.cols;
+            canvasProcessed.height = displayMat.rows;
 
             // Renderizar la matriz procesada en el canvas de previsualización
-            cv.imshow(canvasProcessed, dst);
+            cv.imshow(canvasProcessed, displayMat);
 
         } catch (error) {
             console.error('Error al aplicar procesamiento OpenCV:', error);
         } finally {
             // Liberación estricta de memoria WASM
             if (src) src.delete();
+            if (gray) gray.delete();
             if (dst) dst.delete();
+            if (contourMask) contourMask.delete();
+            if (contours) contours.delete();
+            if (hierarchy) hierarchy.delete();
+            if (displayMat) displayMat.delete();
         }
     }
 

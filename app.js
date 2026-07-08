@@ -6,6 +6,9 @@
     let pages = [];
     let stream = null;
     let lastCropRegion = null;
+    let documentCorners = [];
+    let selectedCorner = null;
+    let originalFrameMat = null;
     // 'environment' = cámara trasera (por defecto), 'user' = cámara frontal
     let currentFacingMode = 'environment';
     let hasMultipleCameras = false;
@@ -302,72 +305,55 @@
     function captureFrame() {
         if (!stream) return;
 
+        documentCorners = [];
+        selectedCorner = null;
+        if (originalFrameMat) {
+            originalFrameMat.delete();
+            originalFrameMat = null;
+        }
+
         drawCropToCanvas(canvasRaw);
 
-        // Cambiar a vista de previsualización
         cameraSection.classList.remove('active');
         previewSection.classList.add('active');
 
-        // Procesar imagen con el filtro OpenCV
-        applyAdaptiveThreshold();
+        if (canvasRaw.width && canvasRaw.height) {
+            originalFrameMat = cv.imread(canvasRaw);
+            detectAndRenderDocumentCorners();
+        }
     }
 
-    // Filtro Mágico: Umbralización Adaptativa Gaussiana usando OpenCV.js
-    function applyAdaptiveThreshold() {
-        if (!canvasRaw.width || !canvasRaw.height) return;
+    function normalizeDocumentCorners(points) {
+        if (!points || points.length !== 4) return [];
 
-        let src, gray, dst, contourMask, contours, hierarchy;
-        let displayMat = null;
+        const sortedByY = [...points].sort((a, b) => a.y - b.y || a.x - b.x);
+        const top = sortedByY.slice(0, 2).sort((a, b) => a.x - b.x);
+        const bottom = sortedByY.slice(2, 4).sort((a, b) => b.x - a.x);
+
+        return [top[0], top[1], bottom[0], bottom[1]];
+    }
+
+    function detectAndRenderDocumentCorners() {
+        if (!originalFrameMat || !canvasRaw.width || !canvasRaw.height) return;
+
+        let gray = new cv.Mat();
+        let edges = new cv.Mat();
+        let contours = new cv.MatVector();
+        let hierarchy = new cv.Mat();
+        let approx = new cv.Mat();
+
         try {
-            // Cargar imagen raw en una matriz de OpenCV
-            src = cv.imread(canvasRaw);
-            gray = new cv.Mat();
-            dst = new cv.Mat();
-            contourMask = new cv.Mat();
-            contours = new cv.MatVector();
-            hierarchy = new cv.Mat();
+            cv.cvtColor(originalFrameMat, gray, cv.COLOR_RGBA2GRAY, 0);
+            cv.GaussianBlur(gray, gray, new cv.Size(5, 5), 0, 0, cv.BORDER_DEFAULT);
+            cv.Canny(gray, edges, 75, 200, 3, false);
+            cv.findContours(edges, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
 
-            // Convertir a escala de grises
-            cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY, 0);
-
-            // Obtener parámetros
-            let blockSize = parseInt(inputBlockSize.value);
-            if (blockSize % 2 === 0) blockSize += 1; // Obligatorio que sea impar
-            if (blockSize < 3) blockSize = 3;
-            
-            const cValue = parseInt(inputCValue.value);
-
-            // Aplicar Umbral Adaptativo Gaussiano
-            cv.adaptiveThreshold(
-                gray,
-                dst,
-                255, // Valor máximo (Blanco puro)
-                cv.ADAPTIVE_THRESH_GAUSSIAN_C,
-                cv.THRESH_BINARY,
-                blockSize,
-                cValue
-            );
-
-            // Invertir el mapa para que las figuras oscuras se vuelvan manchas blancas y puedan detectarse como contornos
-            cv.bitwise_not(dst, contourMask);
-
-            // 1. Encontrar contornos principales
-            cv.findContours(contourMask, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-
-            let bestPoints = null;
+            let detectedPoints = null;
             let maxArea = 0;
 
-            for (let i = 0; i < contours.size(); i++) {
+            for (let i = 0; i < contours.size(); ++i) {
                 const contour = contours.get(i);
-                const area = cv.contourArea(contour, false);
-
-                if (area < 1000) {
-                    contour.delete();
-                    continue;
-                }
-
                 const peri = cv.arcLength(contour, true);
-                const approx = new cv.Mat();
                 cv.approxPolyDP(contour, approx, 0.02 * peri, true);
 
                 if (approx.rows === 4) {
@@ -376,34 +362,153 @@
 
                     if (rectArea > maxArea) {
                         maxArea = rectArea;
-
-                        const points = [];
+                        detectedPoints = [];
                         for (let j = 0; j < approx.rows; j++) {
-                            points.push({
+                            detectedPoints.push({
                                 x: approx.data32S[j * 2],
                                 y: approx.data32S[j * 2 + 1]
                             });
                         }
-
-                        bestPoints = points;
                     }
                 }
-
-                approx.delete();
-                contour.delete();
             }
 
-            // 2. Si se estabiliza en un polígono de 4 esquinas, corregir perspectiva
-            if (bestPoints && bestPoints.length === 4) {
-                const sortedByY = bestPoints.slice().sort((a, b) => a.y - b.y || a.x - b.x);
-                const top = sortedByY.slice(0, 2).sort((a, b) => a.x - b.x);
-                const bottom = sortedByY.slice(2, 4).sort((a, b) => b.x - a.x);
-                const orderedPoints = [top[0], top[1], bottom[0], bottom[1]];
+            if (detectedPoints && detectedPoints.length === 4) {
+                documentCorners = normalizeDocumentCorners(detectedPoints);
+            } else {
+                const w = canvasRaw.width;
+                const h = canvasRaw.height;
+                documentCorners = [
+                    { x: w * 0.2, y: h * 0.2 },
+                    { x: w * 0.8, y: h * 0.2 },
+                    { x: w * 0.8, y: h * 0.8 },
+                    { x: w * 0.2, y: h * 0.8 }
+                ];
+            }
 
+            applyAdaptiveThreshold();
+            bindCornerInteraction();
+        } catch (error) {
+            console.error('Error al detectar el documento:', error);
+        } finally {
+            gray.delete();
+            edges.delete();
+            contours.delete();
+            hierarchy.delete();
+            approx.delete();
+        }
+    }
+
+    function drawDocumentCornersOverlay() {
+        if (!canvasRaw.width || !canvasRaw.height) return;
+
+        const ctx = canvasProcessed.getContext('2d');
+        if (!ctx) return;
+
+        if (documentCorners.length !== 4) return;
+
+        ctx.save();
+        ctx.strokeStyle = '#2563eb';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(documentCorners[0].x, documentCorners[0].y);
+        for (let i = 1; i < documentCorners.length; i++) {
+            ctx.lineTo(documentCorners[i].x, documentCorners[i].y);
+        }
+        ctx.closePath();
+        ctx.stroke();
+
+        documentCorners.forEach((point) => {
+            ctx.fillStyle = '#16a34a';
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(point.x, point.y, 18, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+        });
+        ctx.restore();
+    }
+
+    function bindCornerInteraction() {
+        if (documentCorners.length !== 4) return;
+
+        const getCanvasCoordinates = (clientX, clientY) => {
+            const rect = canvasProcessed.getBoundingClientRect();
+            const scaleX = canvasProcessed.width / rect.width;
+            const scaleY = canvasProcessed.height / rect.height;
+            return {
+                x: (clientX - rect.left) * scaleX,
+                y: (clientY - rect.top) * scaleY
+            };
+        };
+
+        const handleStart = (clientX, clientY) => {
+            const point = getCanvasCoordinates(clientX, clientY);
+            selectedCorner = documentCorners.find((corner) => {
+                const distance = Math.hypot(corner.x - point.x, corner.y - point.y);
+                return distance < 40;
+            });
+        };
+
+        const handleMove = (clientX, clientY) => {
+            if (!selectedCorner) return;
+            const point = getCanvasCoordinates(clientX, clientY);
+            selectedCorner.x = point.x;
+            selectedCorner.y = point.y;
+            drawDocumentCornersOverlay();
+        };
+
+        canvasProcessed.onmousedown = (event) => {
+            handleStart(event.clientX, event.clientY);
+            event.preventDefault();
+        };
+        canvasProcessed.onmousemove = (event) => {
+            handleMove(event.clientX, event.clientY);
+        };
+        canvasProcessed.onmouseup = () => {
+            selectedCorner = null;
+        };
+
+        canvasProcessed.ontouchstart = (event) => {
+            if (event.touches.length > 0) {
+                const touch = event.touches[0];
+                handleStart(touch.clientX, touch.clientY);
+            }
+        };
+        canvasProcessed.ontouchmove = (event) => {
+            if (event.touches.length > 0 && selectedCorner) {
+                const touch = event.touches[0];
+                handleMove(touch.clientX, touch.clientY);
+            }
+            event.preventDefault();
+        };
+        canvasProcessed.ontouchend = () => {
+            selectedCorner = null;
+        };
+    }
+
+    function applyAdaptiveThreshold() {
+        if (!originalFrameMat || !canvasRaw.width || !canvasRaw.height) return;
+
+        let src = originalFrameMat.clone();
+        let gray = new cv.Mat();
+        let dst = new cv.Mat();
+        let displayMat = null;
+
+        try {
+            let blockSize = parseInt(inputBlockSize.value);
+            if (blockSize % 2 === 0) blockSize += 1;
+            if (blockSize < 3) blockSize = 3;
+
+            const cValue = parseInt(inputCValue.value);
+
+            if (documentCorners.length === 4) {
+                const orderedPoints = normalizeDocumentCorners(documentCorners);
                 const width = Math.max(src.cols, 600);
                 const height = Math.max(src.rows, 800);
 
-                const srcTri = cv.matFromArray(4, 1, cv.CV_32FC2, orderedPoints.flatMap(p => [p.x, p.y]));
+                const srcTri = cv.matFromArray(4, 1, cv.CV_32FC2, orderedPoints.flatMap(point => [point.x, point.y]));
                 const dstTri = cv.matFromArray(4, 1, cv.CV_32FC2, [0, 0, width, 0, width, height, 0, height]);
                 const perspectiveMatrix = cv.getPerspectiveTransform(srcTri, dstTri);
 
@@ -417,43 +522,79 @@
                 displayMat = src.clone();
             }
 
-            canvasProcessed.width = displayMat.cols;
-            canvasProcessed.height = displayMat.rows;
+            cv.cvtColor(displayMat, gray, cv.COLOR_RGBA2GRAY, 0);
+            cv.adaptiveThreshold(gray, dst, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, blockSize, cValue);
 
-            // Renderizar la matriz procesada en el canvas de previsualización
-            cv.imshow(canvasProcessed, displayMat);
-
+            canvasProcessed.width = dst.cols;
+            canvasProcessed.height = dst.rows;
+            cv.imshow(canvasProcessed, dst);
+            drawDocumentCornersOverlay();
         } catch (error) {
             console.error('Error al aplicar procesamiento OpenCV:', error);
         } finally {
-            // Liberación estricta de memoria WASM
             if (src) src.delete();
             if (gray) gray.delete();
             if (dst) dst.delete();
-            if (contourMask) contourMask.delete();
-            if (contours) contours.delete();
-            if (hierarchy) hierarchy.delete();
             if (displayMat) displayMat.delete();
         }
     }
 
     // Aceptar Página Escaneada
-    function acceptCapturedPage() {
-        // Extraer contenido del canvas procesado como un Blob
-        canvasProcessed.toBlob((blob) => {
-            if (blob) {
-                const objectUrl = URL.createObjectURL(blob);
-                
-                // Agregar al arreglo en memoria volátil
-                pages.push({
-                    blob: blob,
-                    objectUrl: objectUrl
-                });
+    async function acceptCapturedPage() {
+        if (!originalFrameMat || documentCorners.length !== 4) {
+            switchToScannerView();
+            return;
+        }
 
-                updateGalleryUI();
-                switchToScannerView();
+        let src = originalFrameMat.clone();
+        let gray = new cv.Mat();
+        let dst = new cv.Mat();
+        let displayMat = null;
+
+        try {
+            const orderedPoints = normalizeDocumentCorners(documentCorners);
+            const width = Math.max(src.cols, 600);
+            const height = Math.max(src.rows, 800);
+
+            const srcTri = cv.matFromArray(4, 1, cv.CV_32FC2, orderedPoints.flatMap(point => [point.x, point.y]));
+            const dstTri = cv.matFromArray(4, 1, cv.CV_32FC2, [0, 0, width, 0, width, height, 0, height]);
+            const perspectiveMatrix = cv.getPerspectiveTransform(srcTri, dstTri);
+
+            displayMat = new cv.Mat();
+            cv.warpPerspective(src, displayMat, perspectiveMatrix, new cv.Size(width, height));
+
+            let blockSize = parseInt(inputBlockSize.value);
+            if (blockSize % 2 === 0) blockSize += 1;
+            if (blockSize < 3) blockSize = 3;
+            const cValue = parseInt(inputCValue.value);
+
+            cv.cvtColor(displayMat, gray, cv.COLOR_RGBA2GRAY, 0);
+            cv.adaptiveThreshold(gray, dst, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, blockSize, cValue);
+
+            canvasProcessed.width = dst.cols;
+            canvasProcessed.height = dst.rows;
+            cv.imshow(canvasProcessed, dst);
+
+            canvasProcessed.toBlob((blob) => {
+                if (blob) {
+                    const objectUrl = URL.createObjectURL(blob);
+                    pages.push({ blob, objectUrl });
+                    updateGalleryUI();
+                    switchToScannerView();
+                }
+            }, 'image/jpeg', 0.85);
+        } catch (error) {
+            console.error('Error al aceptar la página:', error);
+        } finally {
+            if (src) src.delete();
+            if (gray) gray.delete();
+            if (dst) dst.delete();
+            if (displayMat) displayMat.delete();
+            if (originalFrameMat) {
+                originalFrameMat.delete();
+                originalFrameMat = null;
             }
-        }, 'image/jpeg', 0.85); // Calidad optimizada de impresión
+        }
     }
 
     // Descartar captura actual
@@ -467,6 +608,13 @@
         if (processedCtx) processedCtx.clearRect(0, 0, canvasProcessed.width, canvasProcessed.height);
         canvasProcessed.width = 0;
         canvasProcessed.height = 0;
+
+        documentCorners = [];
+        selectedCorner = null;
+        if (originalFrameMat) {
+            originalFrameMat.delete();
+            originalFrameMat = null;
+        }
 
         lastCropRegion = null;
         switchToScannerView();

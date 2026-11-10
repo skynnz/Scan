@@ -1,10 +1,10 @@
-/* Service worker: permite usar la app sin conexión y abrirla como aplicación. */
+﻿/* Service worker: permite usar la app sin conexiÃ³n y abrirla como aplicaciÃ³n. */
 
-const VERSION = '2026-11-10-1';
+const VERSION = '2026-11-10-2';
 const CACHE = `escaner-${VERSION}`;
 
-/* Archivos propios que cambian con cada actualización: se piden a la red
-   primero para no quedarse con una versión vieja de la app. */
+/* Archivos propios que cambian con cada actualizaciÃ³n: se piden a la red
+   primero para no quedarse con una versiÃ³n vieja de la app. */
 const NETWORK_FIRST = /(\.html?|\.js|\.css|\.json)$/i;
 
 const SHELL = [
@@ -49,7 +49,7 @@ self.addEventListener('fetch', (event) => {
     const url = new URL(request.url);
     if (url.origin !== self.location.origin) return;
 
-    // Navegación: red primero, caché como respaldo.
+    // NavegaciÃ³n: red primero, cachÃ© como respaldo.
     if (request.mode === 'navigate') {
         event.respondWith(
             (async () => {
@@ -67,7 +67,7 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    // Código propio: red primero (para recibir actualizaciones), caché después.
+    // CÃ³digo propio: red primero (para recibir actualizaciones), cachÃ© despuÃ©s.
     if (NETWORK_FIRST.test(url.pathname)) {
         event.respondWith(
             (async () => {
@@ -85,7 +85,7 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    // Recursos estables (iconos, librería PDF): caché primero.
+    // Recursos estables (iconos, librerÃ­a PDF): cachÃ© primero.
     event.respondWith(
         (async () => {
             const cache = await caches.open(CACHE);

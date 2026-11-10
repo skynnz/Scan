@@ -119,6 +119,12 @@ function toast(message, type = 'info', timeout = 3000) {
     toastTimer = setTimeout(() => dom.toast.classList.remove('is-visible'), timeout);
 }
 
+/** Oculta el aviso flotante (por ejemplo, al abrir una hoja inferior). */
+function hideToast() {
+    clearTimeout(toastTimer);
+    dom.toast.classList.remove('is-visible');
+}
+
 function setBoot(text) {
     if (dom.bootStatus) dom.bootStatus.textContent = text;
 }
@@ -150,6 +156,7 @@ function loadImage(url) {
 /* --------------------------- Hoja inferior --------------------------- */
 
 function openSheet(html) {
+    hideToast();
     dom.sheetBody.innerHTML = html;
     dom.overlay.hidden = false;
     dom.sheet.hidden = false;

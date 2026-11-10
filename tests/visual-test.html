@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="utf-8"><title>Visual</title>
+<style>
+body{background:#111;color:#ddd;font-family:system-ui;margin:0;padding:12px}
+.row{display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap}
+figure{margin:0;text-align:center;font-size:12px}
+canvas{max-width:100%;display:block;border:1px solid #333}
+</style>
+</head>
+<body>
+<div class="row" id="row"></div>
+<script type="module">
+import * as IM from '../js/imaging.js';
+
+function makeDoc(w = 900, h = 1273) {
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#fbfaf5'; ctx.fillRect(0, 0, w, h);
+  ctx.fillStyle = '#173a63'; ctx.fillRect(0, 0, w, 120);
+  ctx.fillStyle = '#fff'; ctx.fillRect(60, 40, 420, 18); ctx.fillRect(60, 70, 260, 12);
+  let y = 180, seed = 11;
+  const rnd = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+  while (y < h - 160) {
+    const t = rnd() > 0.9;
+    ctx.fillStyle = t ? '#111' : '#3a3a3a';
+    ctx.fillRect(60, y, 120 + rnd() * (w - 220), t ? 13 : 8);
+    y += (t ? 13 : 8) + 11 + rnd() * 6;
+    if (rnd() > 0.85) y += 22;
+  }
+  ctx.fillStyle = 'rgba(190,30,45,.85)'; ctx.beginPath(); ctx.arc(w - 170, h - 200, 62, 0, 7); ctx.fill();
+  ctx.fillStyle = '#fff'; ctx.fillRect(w - 225, h - 205, 110, 8);
+  // Mancha de sombra sobre el papel
+  const g = ctx.createLinearGradient(0, 0, w, 0);
+  g.addColorStop(0, 'rgba(0,0,0,.18)'); g.addColorStop(.5, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,.22)');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+  return c;
+}
+
+function desk(W, H) {
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const ctx = c.getContext('2d');
+  const g = ctx.createLinearGradient(0, 0, W, H);
+  g.addColorStop(0, '#4a3b2d'); g.addColorStop(1, '#1a1512');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  const img = ctx.getImageData(0, 0, W, H);
+  for (let i = 0; i < img.data.length; i += 4) { const n = (Math.random() - .5) * 24; img.data[i] += n; img.data[i + 1] += n; img.data[i + 2] += n; }
+  ctx.putImageData(img, 0, 0);
+  return c;
+}
+
+const W = 760, H = 1150;
+const quad = [{ x: 105, y: 120 }, { x: 655, y: 95 }, { x: 690, y: 1040 }, { x: 80, y: 1065 }];
+const scene = desk(W, H);
+const doc = makeDoc();
+const docData = doc.getContext('2d').getImageData(0, 0, doc.width, doc.height);
+const warped = IM.warpQuad(docData.data, doc.width, doc.height,
+  [{ x: 0, y: 0 }, { x: doc.width, y: 0 }, { x: doc.width, y: doc.height }, { x: 0, y: doc.height }],
+  W, H, quad, { transparentOutside: true });
+const layer = document.createElement('canvas'); layer.width = W; layer.height = H;
+layer.getContext('2d').putImageData(new ImageData(warped, W, H), 0, 0);
+scene.getContext('2d').drawImage(layer, 0, 0);
+
+const row = document.getElementById('row');
+const add = (canvas, label) => {
+  const f = document.createElement('figure');
+  f.appendChild(canvas); const c = document.createElement('figcaption'); c.textContent = label;
+  f.appendChild(c); row.appendChild(f);
+};
+
+add(scene, 'escena (foto)');
+
+const source = IM.createSource(scene);
+const detected = IM.detectFromSource(source, { x0: 90, y0: 110, x1: 700, y1: 1060 });
+const view = document.createElement('canvas');
+view.width = W; view.height = H;
+const vctx = view.getContext('2d');
+vctx.drawImage(scene, 0, 0);
+vctx.strokeStyle = '#00ff88'; vctx.lineWidth = 4;
+vctx.beginPath(); vctx.moveTo(detected[0].x, detected[0].y);
+for (let i = 1; i < 4; i++) vctx.lineTo(detected[i].x, detected[i].y);
+vctx.closePath(); vctx.stroke();
+add(view, 'detección automática');
+
+for (const [filter, label] of [['original', 'original'], ['magic', 'color mágico'], ['gray', 'gris'], ['bw', 'B/N']]) {
+  const page = await IM.renderPage(source, detected, filter, 60, 1200);
+  add(page.canvas, label);
+}
+
+window.__DONE__ = true;
+</script>
+</body></html>

@@ -1,0 +1,17 @@
+# Sistema
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Entorno
+node_modules/
+.vscode/
+.idea/
+
+# Artefactos de pruebas
+tests/doc-scene.png
+tests/*.y4m
+tests/shots*/
+
+# Temporales
+*.log

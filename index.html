@@ -2,210 +2,234 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Personal Scanner | Privacy-First Document Scanner</title>
-    <!-- Google Fonts: Outfit for premium modern feel -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css">
-    
-    <!-- jsPDF UMD version -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <!-- OpenCV.js -->
-    <script async src="https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.9.0-release.3/dist/opencv.js" id="opencv-js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#0a0f1a">
+    <meta name="description" content="Escáner de documentos que funciona en tu navegador. Endereza, mejora y exporta a PDF sin subir nada a internet.">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Escáner">
+    <title>Escáner de documentos</title>
+    <link rel="manifest" href="./manifest.json">
+    <link rel="icon" href="./icons/icon-192.png" sizes="192x192">
+    <link rel="apple-touch-icon" href="./icons/icon-192.png">
+    <link rel="stylesheet" href="./styles.css">
+    <script defer src="./vendor/jspdf.umd.min.js"></script>
 </head>
 <body>
-    <!-- Pantalla de carga e inicialización de WASM/OpenCV -->
-    <div id="loading-screen" class="screen active">
-        <div class="loader-content">
-            <div class="logo-container">
-                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M4 8V6C4 4.89543 4.89543 4 6 4H8M16 4H18C19.1046 4 20 4.89543 20 6V8M20 16V18C20 19.1046 19.1046 20 18 20H16M8 20H6C4.89543 20 4 19.1046 4 18V16" stroke="var(--accent-color)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-                    <path d="M7 12H17" stroke="var(--accent-color)" stroke-width="2.5" stroke-linecap="round"/>
-                    <path d="M9 8H15" stroke="var(--accent-color)" stroke-opacity="0.5" stroke-width="2" stroke-linecap="round"/>
-                    <path d="M9 16H15" stroke="var(--accent-color)" stroke-opacity="0.5" stroke-width="2" stroke-linecap="round"/>
-                </svg>
-            </div>
-            <h1>Personal Scanner</h1>
-            <p id="loading-status">Inicializando Inteligencia Artificial local...</p>
-            <div class="progress-bar-container">
-                <div class="progress-bar" id="progress-bar"></div>
-            </div>
-            <span class="privacy-badge">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-                    <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
-                </svg>
-                Procesamiento 100% Local y Privado
-            </span>
+    <!-- ============ PANTALLA DE ARRANQUE ============ -->
+    <div id="boot" class="boot">
+        <div class="boot-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/>
+                <path d="M7 12h10"/>
+            </svg>
         </div>
+        <p id="boot-status">Preparando…</p>
     </div>
 
-    <!-- Contenedor Principal de la Aplicación -->
-    <div id="app-container" class="app-hidden">
-        <!-- VISTA DE CÁMARA (Modo Escaneo Activo) -->
-        <section id="camera-section" class="app-section active">
-            <div class="camera-wrapper">
-                <video id="video-feed" autoplay playsinline muted></video>
-                <div class="camera-overlay">
-                    <div class="scanner-guide">
-                        <div class="guide-corner tl"></div>
-                        <div class="guide-corner tr"></div>
-                        <div class="guide-corner bl"></div>
-                        <div class="guide-corner br"></div>
-                        <div class="laser-scanner"></div>
+    <div id="app" class="app" hidden>
+        <!-- ============ VISTA: ESCANEAR ============ -->
+        <section id="view-scan" class="view is-active" aria-label="Escanear">
+            <div class="cam">
+                <video id="cam" playsinline autoplay muted></video>
+                <canvas id="live-overlay" class="live-overlay" aria-hidden="true"></canvas>
+
+                <div class="cam-guide-layer" aria-hidden="true">
+                    <div class="guide" id="guide">
+                        <span class="corner tl"></span>
+                        <span class="corner tr"></span>
+                        <span class="corner br"></span>
+                        <span class="corner bl"></span>
+                        <span class="laser"></span>
                     </div>
                 </div>
-            </div>
-            
-            <!-- Barra de Herramientas del Escáner (Arriba) -->
-            <header class="scanner-header">
-                <div class="header-logo">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M4 8V6C4 4.89543 4.89543 4 6 4H8M16 4H18C19.1046 4 20 4.89543 20 6V8M20 16V18C20 19.1046 19.1046 20 18 20H16M8 20H6C4.89543 20 4 19.1046 4 18V16" stroke-linecap="round" stroke-linejoin="round"/>
-                    </svg>
-                    <span>Personal Scanner</span>
-                </div>
-                <div class="status-indicator">
-                    <span class="live-dot"></span> EN VIVO
-                </div>
-            </header>
 
-            <!-- Controles Inferiores de la Cámara -->
-            <div class="camera-controls">
-                <!-- Botón de Galería (Izquierda) -->
-                <div class="side-control-placeholder">
-                    <button id="gallery-trigger-btn" class="gallery-trigger-btn" aria-label="Ver Galería" disabled>
-                        <div class="gallery-trigger-wrapper">
-                            <img id="gallery-trigger-img" src="" style="display:none;" alt="Miniatura">
-                            <svg id="gallery-trigger-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/>
-                                <path d="M12 8v8M8 12h8"/>
-                            </svg>
-                        </div>
-                        <div id="gallery-trigger-badge" class="trigger-badge" style="display:none;">0</div>
-                    </button>
-                </div>
-                
-                <!-- Botón de Captura (Centro) -->
-                <button id="capture-btn" class="capture-btn" aria-label="Capturar documento">
-                    <div class="capture-btn-inner"></div>
-                </button>
-                
-                <!-- Botón de Voltear Cámara (Derecha) -->
-                <div class="side-control-placeholder">
-                    <div class="flip-btn-wrapper">
-                        <button id="toggle-flash-btn" class="icon-btn flip-camera-btn" title="Cambiar a Cámara Frontal">
-                            <!-- Ícono de voltear cámara (flip) -->
-                            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M20 7h-9"/>
-                                <path d="M14 17H5"/>
-                                <circle cx="17" cy="17" r="3"/>
-                                <circle cx="7" cy="7" r="3"/>
-                            </svg>
-                        </button>
-                        <span id="camera-mode-label" class="camera-mode-label">Trasera</span>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <!-- VISTA DE PREVISUALIZACIÓN Y AJUSTES DEL FILTRO MÁGICO -->
-        <section id="preview-section" class="app-section">
-            <header class="section-header">
-                <h2>Filtro de Contraste Adaptativo</h2>
-                <p>Ajusta el nivel de limpieza para eliminar sombras</p>
-            </header>
-
-            <div class="preview-container">
-                <!-- Se dibuja el canvas final de OpenCV con el filtro -->
-                <canvas id="canvas-processed"></canvas>
-            </div>
-
-            <!-- Controles de Ajuste del Filtro Adaptativo (Gaussian Adaptive Threshold) -->
-            <div class="filter-controls-panel">
-                <div class="control-row">
-                    <div class="control-label">
-                        <span>Tamaño de Bloque (Detalle)</span>
-                        <span id="block-size-val">21</span>
-                    </div>
-                    <input type="range" id="input-block-size" min="3" max="99" step="2" value="21">
-                </div>
-                
-                <div class="control-row">
-                    <div class="control-label">
-                        <span>Sensibilidad (C)</span>
-                        <span id="c-val">7</span>
-                    </div>
-                    <input type="range" id="input-c-value" min="-10" max="30" step="1" value="7">
-                </div>
-            </div>
-
-            <div class="preview-actions">
-                <button id="discard-page-btn" class="action-btn secondary">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <line x1="18" y1="6" x2="6" y2="18"></line>
-                        <line x1="6" y1="6" x2="18" y2="18"></line>
-                    </svg>
-                    Descartar
-                </button>
-                <button id="accept-page-btn" class="action-btn primary">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <polyline points="20 6 9 17 4 12"></polyline>
-                    </svg>
-                    Aceptar Página
-                </button>
-            </div>
-        </section>
-
-        <!-- PANTALLA / OVERLAY COMPLETO DE LA GALERÍA -->
-        <div id="gallery-modal" class="gallery-modal">
-            <div class="gallery-modal-content">
-                <header class="gallery-modal-header">
-                    <div class="modal-title-group">
-                        <h2>Documento Escaneado</h2>
-                        <span class="modal-page-counter">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                            </svg>
-                            <span id="pages-count-text">0</span> páginas
-                        </span>
-                    </div>
-                    <button id="close-gallery-btn" class="close-modal-btn">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <polyline points="15 18 9 12 15 6"></polyline>
+                <header class="cam-top">
+                    <div class="brand">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/>
                         </svg>
-                        Seguir Escaneando
+                        <span>Escáner</span>
+                    </div>
+                    <button id="btn-torch" class="icon-btn" type="button" aria-label="Encender linterna" hidden>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/>
+                        </svg>
                     </button>
                 </header>
 
-                <!-- Grilla Scrollable de Miniaturas -->
-                <div class="gallery-grid" id="thumbnails-container">
-                    <!-- Se inyectarán dinámicamente con JS -->
+                <p class="cam-hint" id="cam-hint">Ubica el documento dentro del recuadro</p>
+
+                <div class="cam-bottom">
+                    <button id="btn-gallery" class="thumb-btn" type="button" aria-label="Ver documento escaneado">
+                        <img id="thumb-last" alt="" hidden>
+                        <svg id="thumb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="3" width="18" height="18" rx="2"/>
+                            <path d="M3 15l5-5 4 4 3-3 6 6"/>
+                            <circle cx="8.5" cy="8" r="1.5"/>
+                        </svg>
+                        <span id="thumb-badge" class="count-badge" hidden>0</span>
+                    </button>
+
+                    <button id="btn-shutter" class="shutter" type="button" aria-label="Capturar documento" disabled>
+                        <span class="shutter-ring"></span>
+                    </button>
+
+                    <button id="btn-flip" class="icon-btn" type="button" aria-label="Cambiar de cámara">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M20 7h-9M14 17H5"/>
+                            <circle cx="17" cy="17" r="3"/>
+                            <circle cx="7" cy="7" r="3"/>
+                        </svg>
+                    </button>
                 </div>
 
-                <!-- Controles del PDF final y Limpieza -->
-                <div class="gallery-modal-footer">
-                    <button id="cancel-session-btn" class="action-btn secondary danger-text">
-                        Eliminar Todo
-                    </button>
-                    <button id="download-pdf-btn" class="action-btn success" disabled>
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                            <polyline points="7 10 12 15 17 10"></polyline>
-                            <line x1="12" y1="15" x2="12" y2="3"></line>
-                        </svg>
-                        Exportar PDF
-                    </button>
+                <div id="cam-blocked" class="cam-blocked" hidden>
+                    <div class="blocked-card">
+                        <h2>No pudimos abrir la cámara</h2>
+                        <p id="cam-blocked-msg">Revisa los permisos del navegador.</p>
+                        <button id="btn-native-cam" class="btn primary" type="button">Tomar foto</button>
+                        <button id="btn-import-photo" class="btn ghost" type="button">Elegir una imagen</button>
+                        <button id="btn-retry-cam" class="btn ghost" type="button">Reintentar cámara</button>
+                    </div>
                 </div>
             </div>
-        </div>
+        </section>
+
+        <!-- ============ VISTA: DOCUMENTO ============ -->
+        <section id="view-pages" class="view" aria-label="Documento">
+            <header class="topbar">
+                <div>
+                    <h1>Documento</h1>
+                    <p id="pages-sub">Sin páginas todavía</p>
+                </div>
+                <button id="btn-add-page" class="btn small ghost" type="button">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+                    Agregar
+                </button>
+            </header>
+
+            <div id="pages-empty" class="empty">
+                <div class="empty-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                        <path d="M14 2v6h6"/>
+                    </svg>
+                </div>
+                <h2>Todavía no hay páginas</h2>
+                <p>Escanea tu primer documento y aparecerá aquí listo para exportar.</p>
+                <button id="btn-empty-scan" class="btn primary" type="button">Escanear ahora</button>
+            </div>
+
+            <div id="pages-grid" class="pages-grid" hidden></div>
+
+            <footer class="pages-footer">
+                <button id="btn-export" class="btn primary wide" type="button" disabled>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <path d="M7 10l5 5 5-5M12 15V3"/>
+                    </svg>
+                    Exportar PDF
+                </button>
+                <button id="btn-clear" class="btn danger-ghost wide" type="button" disabled>Vaciar documento</button>
+            </footer>
+        </section>
+
+        <!-- ============ VISTA: EDITOR ============ -->
+        <section id="view-edit" class="view edit" aria-label="Ajustar página">
+            <header class="edit-top">
+                <button id="btn-edit-cancel" class="icon-btn" type="button" aria-label="Cancelar">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                </button>
+
+                <div class="segmented" role="tablist" aria-label="Vista">
+                    <button class="seg is-active" data-mode="adjust" type="button" role="tab">Esquinas</button>
+                    <button class="seg" data-mode="result" type="button" role="tab">Resultado</button>
+                </div>
+
+                <button id="btn-rotate" class="icon-btn" type="button" aria-label="Rotar imagen">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 2v6h-6"/>
+                        <path d="M3 12a9 9 0 0 1 15-6.7L21 8"/>
+                        <path d="M3 22v-6h6"/>
+                        <path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
+                    </svg>
+                </button>
+            </header>
+
+            <div class="edit-stage" id="edit-stage">
+                <canvas id="edit-canvas"></canvas>
+                <p class="edit-hint" id="edit-hint">Arrastra las esquinas hasta los bordes del papel</p>
+                <div class="busy" id="edit-busy" hidden>
+                    <div class="spinner"></div>
+                    <span id="busy-text">Procesando…</span>
+                    <div class="progress"><span id="busy-bar"></span></div>
+                </div>
+            </div>
+
+            <div class="edit-panel">
+                <div class="chips" id="filter-chips" role="group" aria-label="Filtro">
+                    <button class="chip" data-filter="original" type="button">Original</button>
+                    <button class="chip is-active" data-filter="magic" type="button">Color mágico</button>
+                    <button class="chip" data-filter="gray" type="button">Gris</button>
+                    <button class="chip" data-filter="bw" type="button">Blanco y negro</button>
+                </div>
+
+                <div class="slider-row" id="intensity-row">
+                    <div class="slider-label">
+                        <label for="intensity">Limpieza</label>
+                        <output id="intensity-out">60</output>
+                    </div>
+                    <input id="intensity" type="range" min="0" max="100" step="1" value="60" aria-label="Intensidad del filtro">
+                </div>
+            </div>
+
+            <footer class="edit-actions">
+                <button id="btn-retake" class="btn ghost" type="button">Repetir</button>
+                <button id="btn-accept" class="btn primary" type="button">Guardar página</button>
+            </footer>
+        </section>
+
+        <!-- ============ NAVEGACIÓN INFERIOR ============ -->
+        <nav id="tabbar" class="tabbar" aria-label="Navegación principal">
+            <button class="tab is-active" data-nav="scan" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/>
+                    <circle cx="12" cy="12" r="3"/>
+                </svg>
+                <span>Escanear</span>
+            </button>
+            <button class="tab" data-nav="pages" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <path d="M14 2v6h6"/>
+                </svg>
+                <span>Documento</span>
+                <span id="tab-badge" class="count-badge tab-badge" hidden>0</span>
+            </button>
+        </nav>
     </div>
 
-    <!-- Canvas Oculto para la Captura de Stream de Video a Raw -->
-    <canvas id="canvas-raw" style="display: none;"></canvas>
-    
-    <script src="app.js"></script>
+    <!-- ============ HOJA INFERIOR (acciones) ============ -->
+    <div id="overlay" class="overlay" hidden></div>
+    <div id="sheet" class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title" hidden>
+        <div class="sheet-grip" aria-hidden="true"></div>
+        <div id="sheet-body"></div>
+    </div>
+
+    <!-- ============ VISOR DE PÁGINA ============ -->
+    <div id="viewer" class="viewer" hidden>
+        <button id="viewer-close" class="icon-btn viewer-close" type="button" aria-label="Cerrar">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+        <img id="viewer-img" alt="Vista de la página">
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <input type="file" id="file-import" accept="image/*" multiple hidden>
+    <input type="file" id="file-camera" accept="image/*" capture="environment" hidden>
+
+    <script type="module" src="./js/app.js"></script>
 </body>
 </html>

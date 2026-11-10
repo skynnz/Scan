@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="utf-8"><title>Imaging tests</title></head>
+<body style="background:#111;color:#eee;font-family:monospace;padding:20px">
+<div id="out">running…</div>
+<script type="module">
+import * as IM from '../js/imaging.js';
+
+const out = document.getElementById('out');
+const log = (s) => { out.innerHTML += '<br>' + s; };
+window.__RESULT__ = { cases: [], perf: {}, errors: [] };
+
+function makeDoc(w = 900, h = 1273) {
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#fbfaf5'; ctx.fillRect(0, 0, w, h);
+  ctx.fillStyle = '#173a63'; ctx.fillRect(0, 0, w, 120);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(60, 40, 420, 18);
+  ctx.fillRect(60, 70, 260, 12);
+  // Texto simulado: barras de distintas longitudes
+  let y = 180;
+  let seed = 7;
+  const rnd = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+  ctx.fillStyle = '#222';
+  while (y < h - 160) {
+    const isTitle = rnd() > 0.9;
+    const barH = isTitle ? 13 : 8;
+    ctx.fillStyle = isTitle ? '#111' : '#333';
+    ctx.fillRect(60, y, 120 + rnd() * (w - 220), barH);
+    y += barH + 10 + rnd() * 6;
+    if (rnd() > 0.85) { y += 22; }
+  }
+  // Un "sello" de color
+  ctx.fillStyle = 'rgba(190, 30, 45, 0.85)';
+  ctx.beginPath();
+  ctx.arc(w - 170, h - 200, 62, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(w - 225, h - 205, 110, 8);
+  return c;
+}
+
+function makeDesk(w, h, tint = '#3a2f28') {
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const ctx = c.getContext('2d');
+  const g = ctx.createLinearGradient(0, 0, w, h);
+  g.addColorStop(0, tint);
+  g.addColorStop(1, '#191512');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, w, h);
+  // Grano
+  const img = ctx.getImageData(0, 0, w, h);
+  for (let i = 0; i < img.data.length; i += 4) {
+    const n = (Math.random() - 0.5) * 26;
+    img.data[i] += n; img.data[i + 1] += n; img.data[i + 2] += n;
+  }
+  ctx.putImageData(img, 0, 0);
+  return c;
+}
+
+function buildScene(W, H, quad, { shadow = 0, deskTint = '#3a2f28' } = {}) {
+  const scene = makeDesk(W, H, deskTint);
+  const sctx = scene.getContext('2d');
+  const doc = makeDoc();
+  const docData = doc.getContext('2d').getImageData(0, 0, doc.width, doc.height);
+  const warped = IM.warpQuad(
+    docData.data, doc.width, doc.height,
+    [{ x: 0, y: 0 }, { x: doc.width, y: 0 }, { x: doc.width, y: doc.height }, { x: 0, y: doc.height }],
+    W, H, quad, { transparentOutside: true }
+  );
+  const layer = document.createElement('canvas');
+  layer.width = W; layer.height = H;
+  layer.getContext('2d').putImageData(new ImageData(warped, W, H), 0, 0);
+  sctx.drawImage(layer, 0, 0);
+
+  if (shadow > 0) {
+    const g = sctx.createLinearGradient(0, 0, W, H);
+    g.addColorStop(0, 'rgba(0,0,0,0)');
+    g.addColorStop(1, `rgba(0,0,0,${shadow})`);
+    sctx.fillStyle = g;
+    sctx.fillRect(0, 0, W, H);
+  }
+  return scene;
+}
+
+const W = 720, H = 1280;
+
+function guideRect() {
+  const gw = W * 0.72;
+  const gh = gw * 1.414;
+  const x0 = (W - gw) / 2;
+  const y0 = (H - gh) / 2;
+  return { x0, y0, x1: x0 + gw, y1: y0 + gh };
+}
+
+function rectToQuad(r) {
+  return [{ x: r.x0, y: r.y0 }, { x: r.x1, y: r.y0 }, { x: r.x1, y: r.y1 }, { x: r.x0, y: r.y1 }];
+}
+
+function shrink(q, f) {
+  const cx = q.reduce((s, p) => s + p.x, 0) / 4;
+  const cy = q.reduce((s, p) => s + p.y, 0) / 4;
+  return q.map((p) => ({ x: cx + (p.x - cx) * f, y: cy + (p.y - cy) * f }));
+}
+
+function rotate(q, deg) {
+  const cx = q.reduce((s, p) => s + p.x, 0) / 4;
+  const cy = q.reduce((s, p) => s + p.y, 0) / 4;
+  const a = (deg * Math.PI) / 180;
+  return q.map((p) => {
+    const dx = p.x - cx, dy = p.y - cy;
+    return { x: cx + dx * Math.cos(a) - dy * Math.sin(a), y: cy + dx * Math.sin(a) + dy * Math.cos(a) };
+  });
+}
+
+function perspective(q, amount) {
+  const cy = q.reduce((s, p) => s + p.y, 0) / 4;
+  return q.map((p) => ({
+    x: p.x + ((p.y < cy ? 1 : -1) * (p.x - (W / 2)) * amount),
+    y: p.y,
+  }));
+}
+
+function offset(q, dx, dy) { return q.map((p) => ({ x: p.x + dx, y: p.y + dy })); }
+
+function meanCornerError(a, b) {
+  if (!a) return null;
+  // comparar tras ordenar ambos
+  const oa = IM.orderCorners(a), ob = IM.orderCorners(b);
+  let s = 0;
+  for (let i = 0; i < 4; i++) s += Math.hypot(oa[i].x - ob[i].x, oa[i].y - ob[i].y);
+  return s / 4;
+}
+
+const base = rectToQuad(guideRect());
+const cases = [
+  { name: 'alineado', quad: base, opts: {} },
+  { name: 'doc 4% menor', quad: shrink(base, 0.96), opts: {} },
+  { name: 'doc 6% mayor', quad: shrink(base, 1.06), opts: {} },
+  { name: 'rotado 7°', quad: rotate(base, 7), opts: {} },
+  { name: 'perspectiva 8%', quad: perspective(base, 0.08), opts: {} },
+  { name: 'sombra fuerte', quad: base, opts: { shadow: 0.55 } },
+  { name: 'desplazado 7%', quad: offset(base, W * 0.07, -H * 0.04), opts: {} },
+  { name: 'escritorio claro', quad: base, opts: { deskTint: '#c9c2b4' } },
+  { name: 'combinado', quad: rotate(shrink(base, 0.94), 4), opts: { shadow: 0.35 } },
+];
+
+const t0 = performance.now();
+for (const c of cases) {
+  const scene = buildScene(W, H, c.quad, c.opts);
+  const ts = performance.now();
+  const source = IM.createSource(scene);
+  const detected = IM.detectFromSource(source, guideRect());
+  const dt = performance.now() - ts;
+  const err = meanCornerError(detected, c.quad);
+  window.__RESULT__.cases.push({
+    name: c.name,
+    ok: detected ? (err <= 12) : false,
+    detected: !!detected,
+    errPx: err === null ? null : Math.round(err * 10) / 10,
+    errPct: err === null ? null : Math.round((err / Math.hypot(W, H)) * 1000) / 10,
+    ms: Math.round(dt),
+  });
+}
+
+// --- Imagen realista (documento sobre escritorio) ---
+async function realCase() {
+  const img = new Image();
+  img.src = 'doc-scene.png';
+  await img.decode();
+  const c = document.createElement('canvas');
+  c.width = img.naturalWidth;
+  c.height = img.naturalHeight;
+  c.getContext('2d').drawImage(img, 0, 0);
+  const source = IM.createSource(c);
+  const guide = { x0: c.width * 0.06, y0: c.height * 0.06, x1: c.width * 0.94, y1: c.height * 0.94 };
+  const t = performance.now();
+  const det = IM.detectFromSource(source, guide);
+  const truth = [{ x: 112, y: 232 }, { x: 606, y: 208 }, { x: 622, y: 932 }, { x: 96, y: 950 }];
+  const err = det ? meanCornerError(det, truth) : null;
+  window.__RESULT__.cases.push({
+    name: 'foto importada (6% inset)',
+    ok: !!det,
+    detected: !!det,
+    errPx: err === null ? null : Math.round(err * 10) / 10,
+    errPct: err === null ? null : Math.round((err / Math.hypot(c.width, c.height)) * 1000) / 10,
+    ms: Math.round(performance.now() - t),
+  });
+}
+
+await realCase();
+
+// --- Rendimiento de warp + filtros a resolución real ---
+async function perf() {
+  const big = document.createElement('canvas');
+  big.width = 2400; big.height = 3390;
+  const ctx = big.getContext('2d');
+  ctx.fillStyle = '#eee'; ctx.fillRect(0, 0, big.width, big.height);
+  ctx.fillStyle = '#222';
+  for (let y = 100; y < big.height - 100; y += 26) ctx.fillRect(120, y, 1800 + Math.random() * 300, 9);
+  const src = IM.createSource(big);
+  const corners = [
+    { x: 60, y: 80 }, { x: 2340, y: 60 }, { x: 2360, y: 3320 }, { x: 40, y: 3340 },
+  ];
+  for (const filter of ['original', 'magic', 'gray', 'bw']) {
+    const t = performance.now();
+    const page = await IM.renderPage(src, corners, filter, 60, 2400);
+    window.__RESULT__.perf[filter] = { ms: Math.round(performance.now() - t), w: page.width, h: page.height };
+  }
+}
+
+await perf();
+window.__RESULT__.totalMs = Math.round(performance.now() - t0);
+out.textContent = JSON.stringify(window.__RESULT__, null, 2);
+window.__DONE__ = true;
+</script>
+</body>
+</html>

@@ -744,7 +744,11 @@ export function initTools(deps) {
                 const canvas = document.createElement('canvas');
                 canvas.width = Math.ceil(viewport.width);
                 canvas.height = Math.ceil(viewport.height);
-                await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+                const context = canvas.getContext('2d');
+                // Fondo blanco: pdf.js no pinta el fondo y el JPEG lo dejaría negro.
+                context.fillStyle = '#ffffff';
+                context.fillRect(0, 0, canvas.width, canvas.height);
+                await page.render({ canvasContext: context, viewport }).promise;
 
                 pages.push({ index: i - 1, rotate: 0, url: canvas.toDataURL('image/jpeg', 0.72) });
                 canvas.width = 0;

@@ -1,6 +1,6 @@
 /* Service worker: permite usar la app sin conexión y abrirla como aplicación. */
 
-const VERSION = '2026-11-10-3';
+const VERSION = '2026-11-10-4';
 const CACHE = `escaner-${VERSION}`;
 
 /* Archivos propios que cambian con cada actualización: se piden a la red

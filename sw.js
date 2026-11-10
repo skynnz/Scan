@@ -1,11 +1,12 @@
-﻿/* Service worker: permite usar la app sin conexiÃ³n y abrirla como aplicaciÃ³n. */
+/* Service worker: permite usar la app sin conexión y abrirla como aplicación. */
 
-const VERSION = '2026-11-10-2';
+const VERSION = '2026-11-10-3';
 const CACHE = `escaner-${VERSION}`;
 
-/* Archivos propios que cambian con cada actualizaciÃ³n: se piden a la red
-   primero para no quedarse con una versiÃ³n vieja de la app. */
-const NETWORK_FIRST = /(\.html?|\.js|\.css|\.json)$/i;
+/* Archivos propios que cambian con cada actualización: se piden a la red
+   primero para no quedarse con una versión vieja de la app. Las librerías de
+   `vendor/` quedan afuera a propósito: son grandes y no cambian. */
+const NETWORK_FIRST = /\/js\/[^/]+\.js$|\.html?$|\.css$|manifest\.json$/i;
 
 const SHELL = [
     './',
@@ -15,6 +16,7 @@ const SHELL = [
     './js/imaging.js',
     './js/store.js',
     './js/pdf.js',
+    './js/tools.js',
     './vendor/jspdf.umd.min.js',
     './manifest.json',
     './icons/icon-192.png',
@@ -49,7 +51,7 @@ self.addEventListener('fetch', (event) => {
     const url = new URL(request.url);
     if (url.origin !== self.location.origin) return;
 
-    // NavegaciÃ³n: red primero, cachÃ© como respaldo.
+    // Navegación: red primero, caché como respaldo.
     if (request.mode === 'navigate') {
         event.respondWith(
             (async () => {
@@ -67,7 +69,7 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    // CÃ³digo propio: red primero (para recibir actualizaciones), cachÃ© despuÃ©s.
+    // Código propio: red primero (para recibir actualizaciones), caché después.
     if (NETWORK_FIRST.test(url.pathname)) {
         event.respondWith(
             (async () => {
@@ -85,7 +87,7 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    // Recursos estables (iconos, librerÃ­a PDF): cachÃ© primero.
+    // Recursos estables (iconos, librerías de PDF): caché primero.
     event.respondWith(
         (async () => {
             const cache = await caches.open(CACHE);

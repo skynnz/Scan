@@ -190,6 +190,99 @@
             </footer>
         </section>
 
+        <!-- ============ VISTA: HERRAMIENTAS ============ -->
+        <section id="view-tools" class="view" aria-label="Herramientas">
+            <header class="topbar">
+                <div>
+                    <h1>Herramientas</h1>
+                    <p>Todo se procesa en tu dispositivo</p>
+                </div>
+            </header>
+
+            <div class="tools-list">
+                <button class="tool-card" data-tool="merge" type="button">
+                    <span class="tool-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M8 3h8a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/>
+                            <path d="M4 7v12a2 2 0 0 0 2 2h8"/>
+                            <path d="M10 9h4M10 13h4"/>
+                        </svg>
+                    </span>
+                    <span class="tool-text">
+                        <strong>Unir PDFs</strong>
+                        <small>Combinar varios archivos en uno</small>
+                    </span>
+                    <svg class="tool-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+                </button>
+
+                <button class="tool-card" data-tool="compress" type="button">
+                    <span class="tool-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M4 14h6v6M20 10h-6V4"/>
+                            <path d="M14 10l7-7M3 21l7-7"/>
+                        </svg>
+                    </span>
+                    <span class="tool-text">
+                        <strong>Comprimir PDF</strong>
+                        <small>Reducir el peso para enviarlo</small>
+                    </span>
+                    <svg class="tool-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+                </button>
+
+                <button class="tool-card" data-tool="images" type="button">
+                    <span class="tool-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="3" width="18" height="18" rx="2"/>
+                            <circle cx="8.5" cy="8.5" r="1.5"/>
+                            <path d="M21 15l-5-5L5 21"/>
+                        </svg>
+                    </span>
+                    <span class="tool-text">
+                        <strong>Imágenes a PDF</strong>
+                        <small>Convertir fotos en un documento</small>
+                    </span>
+                    <svg class="tool-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+                </button>
+
+                <button class="tool-card" data-tool="organize" type="button">
+                    <span class="tool-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="3" width="7" height="9" rx="1"/>
+                            <rect x="14" y="3" width="7" height="5" rx="1"/>
+                            <rect x="14" y="12" width="7" height="9" rx="1"/>
+                            <rect x="3" y="16" width="7" height="5" rx="1"/>
+                        </svg>
+                    </span>
+                    <span class="tool-text">
+                        <strong>Editar PDF</strong>
+                        <small>Rotar, borrar y reordenar páginas</small>
+                    </span>
+                    <svg class="tool-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+                </button>
+            </div>
+
+            <p class="tools-note">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <rect x="3" y="11" width="18" height="11" rx="2"/>
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                </svg>
+                Tus archivos se abren y procesan en este dispositivo. Nunca se suben a internet.
+            </p>
+        </section>
+
+        <!-- ============ VISTA: HERRAMIENTA ABIERTA ============ -->
+        <section id="view-tool" class="view tool-view" aria-label="Herramienta">
+            <header class="tool-top">
+                <button id="tool-back" class="icon-btn" type="button" aria-label="Volver a herramientas">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+                </button>
+                <h2 id="tool-title">Herramienta</h2>
+            </header>
+
+            <div id="tool-body" class="tool-body"></div>
+            <footer id="tool-footer" class="tool-footer" hidden></footer>
+        </section>
+
         <!-- ============ NAVEGACIÓN INFERIOR ============ -->
         <nav id="tabbar" class="tabbar" aria-label="Navegación principal">
             <button class="tab is-active" data-nav="scan" type="button">
@@ -206,6 +299,13 @@
                 </svg>
                 <span>Documento</span>
                 <span id="tab-badge" class="count-badge tab-badge" hidden>0</span>
+            </button>
+            <button class="tab" data-nav="tools" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14.7 6.3a4 4 0 0 0 5 5l4 4-3 3-4-4a4 4 0 0 1-5-5l3 3 2-2-3-3z"/>
+                    <path d="M7 14l-4 4 3 3 4-4"/>
+                </svg>
+                <span>Herramientas</span>
             </button>
         </nav>
     </div>

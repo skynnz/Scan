@@ -10,6 +10,8 @@ módulos de JavaScript.
 | Escanear | `#view-scan` | Cámara en vivo, guía de encuadre y detección en tiempo real. |
 | Documento | `#view-pages` | Grilla de páginas, acciones por página y exportación. |
 | Editor | `#view-edit` | Ajuste de esquinas y vista previa con filtros. |
+| Herramientas | `#view-tools` | Lista de utilidades de PDF. |
+| Herramienta | `#view-tool` | Vista genérica que cada herramienta arma dinámicamente. |
 
 El editor se abre a pantalla completa (sin barra inferior) y se cierra
 guardando o descartando la página.
@@ -105,6 +107,22 @@ sigue funcionando.
   imagen) o "como la imagen" (300 ppp).
 * La imagen se escala respetando su proporción y se centra; nunca se estira.
 * `compress: true` activa la compresión de los flujos del PDF.
+
+## Herramientas (`js/tools.js`)
+
+Las librerías se cargan con etiquetas `<script>` inyectadas en el momento, no
+en el arranque. Así el escaneo no paga los ~2,3 MB de `pdf-lib` + `pdf.js`.
+
+| Herramienta | Librería | Cómo funciona |
+| --- | --- | --- |
+| Unir PDFs | pdf-lib | Copia las páginas de cada archivo, en orden, a un documento nuevo. |
+| Comprimir PDF | pdf.js + jsPDF | Renderiza cada página a 200/150/100 ppp y la vuelve a codificar en JPEG. Conserva el tamaño de hoja original. |
+| Imágenes a PDF | jsPDF | Reutiliza `buildPdf` sobre las imágenes (una por página). |
+| Editar PDF | pdf.js + pdf-lib | pdf.js dibuja las miniaturas; pdf-lib copia solo las páginas elegidas, en el orden y con la rotación indicada. |
+
+La compresión rasteriza: el texto deja de ser seleccionable. Es el mismo
+resultado que se obtiene al escanear, y es lo que permite bajar el peso de
+verdad (en una prueba, 6,5 MB → 539 KB).
 
 ## PWA
 

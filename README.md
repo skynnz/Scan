@@ -31,6 +31,10 @@ textos claros.
 | Filtros | Original, Color mágico (quita sombras y deja el papel blanco), Gris y Blanco y negro. |
 | Documento multipágina | Agregar, ver, rotar, reordenar y eliminar páginas. |
 | Exportar PDF | A4, Carta o "como la imagen", con calidad alta/media/baja. Respeta la proporción real. |
+| **Unir PDFs** | Combina varios archivos en uno, en el orden que elijas. |
+| **Comprimir PDF** | Reduce el peso (hasta un 90 %) para enviarlo por correo o WhatsApp. |
+| **Imágenes a PDF** | Convierte fotos sueltas en un documento, una por página. |
+| **Editar PDF** | Abre un PDF y rota, borra o cambia de lugar sus páginas. |
 | Sin conexión | Queda instalada como app (PWA) y funciona sin internet. |
 | Guardado local | Las páginas se conservan en el dispositivo aunque se recargue la página. |
 
@@ -104,15 +108,19 @@ del sitio.
 ## Estructura
 
 ```
-index.html              Estructura de las 3 vistas (escanear, documento, editor)
+index.html              Estructura de las vistas (escanear, documento, editor, herramientas)
 styles.css              Diseño completo
-js/app.js               Lógica de la app: cámara, vistas, páginas, exportación
+js/app.js               Cámara, vistas, páginas y exportación
 js/imaging.js           Motor de imagen: homografía, filtros y detección
 js/store.js             Guardado local con IndexedDB
 js/pdf.js               Generación del PDF con jsPDF
-vendor/jspdf.umd.min.js jsPDF (copia local, sin CDN)
+js/tools.js             Herramientas: unir, comprimir, imágenes a PDF, editar
+vendor/jspdf.umd.min.js jsPDF          (copia local, sin CDN)
+vendor/pdf-lib.min.js   pdf-lib        (unir / editar páginas)
+vendor/pdf.min.js       pdf.js         (renderizar páginas para comprimir)
+vendor/pdf.worker.min.js
 sw.js                   Service worker (uso sin conexión)
-manifest.webmanifest    Metadatos de la app instalable
+manifest.json           Metadatos de la app instalable
 icons/                  Iconos
 docs/                   Documentación técnica
 tests/                  Pruebas del motor de imagen
@@ -134,24 +142,21 @@ Ver [tests/README.md](tests/README.md).
 
 ## Roadmap
 
-### Herramientas PDF (tipo BentoPDF)
+### Lo que ya está
 
-Es **viable** en GitHub Pages porque todo se puede hacer en el navegador, pero
-requiere una segunda librería de PDF (no alcanza con jsPDF):
+Unir, comprimir, imágenes a PDF y edición de páginas. Todo en el navegador,
+con las librerías (`pdf-lib` y `pdf.js`) cargadas **solo al abrir cada
+herramienta**: la app de escaneo sigue pesando lo mismo.
 
-| Herramienta | Librería | Viabilidad |
+### Lo que se podría sumar
+
+| Función | Cómo | Nota |
 | --- | --- | --- |
-| Unir varios PDF | pdf-lib (~1,2 MB) | Alta |
-| Separar / extraer páginas | pdf-lib | Alta |
-| Rotar u ordenar páginas | pdf-lib | Alta |
-| Imágenes → PDF | ya implementado | Hecha |
-| Comprimir PDF | pdf.js (~1,5 MB) + re-codificar | Media (más lento: hay que rasterizar cada página) |
-| PDF → JPG | pdf.js | Alta |
-| Marca de agua / numeración | jsPDF (redibujar) | Media |
-
-La contra es el peso: sumar pdf-lib y pdf.js agrega ~2,5 MB. Se pueden cargar
-**solo al abrir la sección de herramientas** (carga diferida), así el escaneo
-sigue siendo liviano. No hace falta backend ni cambiar de hosting.
+| Texto, firma o sello sobre el PDF | pdf-lib | Requiere una pantalla de edición nueva. |
+| Numerar páginas / marca de agua | pdf-lib | Sencillo. |
+| PDF → JPG | pdf.js | Sencillo, pero hay que resolver la descarga de varias imágenes. |
+| OCR (texto buscable) | tesseract.js (~4 MB) | Lento en el teléfono; opcional. |
+| Proteger con contraseña | pdf-lib | pdf-lib no encripta; habría que sumar otra librería. |
 
 ### App Android nativa
 

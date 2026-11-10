@@ -8,6 +8,7 @@
 import * as IM from './imaging.js';
 import { Store } from './store.js';
 import { buildPdf, downloadBlob, pdfFileName } from './pdf.js';
+import { initTools } from './tools.js';
 
 /* ------------------------------------------------------------------ */
 /* Constantes                                                          */
@@ -218,7 +219,7 @@ function showView(name) {
     document.querySelectorAll('.tab').forEach((tab) => {
         tab.classList.toggle('is-active', tab.dataset.nav === name);
     });
-    dom.tabbar.classList.toggle('is-hidden', name === 'edit');
+    dom.tabbar.classList.toggle('is-hidden', name === 'edit' || name === 'tool');
 
     if (name === 'scan') {
         startCameraIfNeeded();
@@ -1365,6 +1366,12 @@ function bindEvents() {
     $('btn-add-page').addEventListener('click', () => showView('scan'));
     $('btn-empty-scan').addEventListener('click', () => showView('scan'));
 
+    // Herramientas
+    document.querySelectorAll('.tool-card').forEach((card) => {
+        card.addEventListener('click', () => tools.open(card.dataset.tool));
+    });
+    $('tool-back').addEventListener('click', () => showView('tools'));
+
     // Editor
     $('btn-edit-cancel').addEventListener('click', () => {
         closeEditor();
@@ -1482,6 +1489,9 @@ function registerServiceWorker() {
 /* ------------------------------------------------------------------ */
 /* Arranque                                                            */
 /* ------------------------------------------------------------------ */
+
+// Las herramientas comparten los avisos y las hojas inferiores de la app.
+const tools = initTools({ showView, toast, openSheet, closeSheet, nextFrame });
 
 async function boot() {
     setBoot('Cargando tus páginas…');

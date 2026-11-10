@@ -17,6 +17,12 @@ textos claros.
   <img src="docs/capturas/05-exportar.jpg" width="200" alt="Exportar PDF">
 </p>
 
+<p align="center">
+  <img src="docs/capturas/06-herramientas.jpg" width="200" alt="Herramientas">
+  <img src="docs/capturas/07-comprimir.jpg" width="200" alt="Comprimir PDF">
+  <img src="docs/capturas/08-editar.jpg" width="200" alt="Editar PDF">
+</p>
+
 ---
 
 ## Qué hace
